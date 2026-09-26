@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B2645214-4E1E-438C-A709-8A36ECB05343}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContextMenuCustomizer.Core", "src\ContextMenuCustomizer.Core\ContextMenuCustomizer.Core.csproj", "{510D1CCD-2706-470F-A3E1-BE4A4904AEF5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{C786205E-E342-45FE-BD94-E90EC19C6E2E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContextMenuCustomizer.Tests", "tests\ContextMenuCustomizer.Tests\ContextMenuCustomizer.Tests.csproj", "{F4172929-6EBF-4F56-B617-D874D4122661}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{510D1CCD-2706-470F-A3E1-BE4A4904AEF5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{510D1CCD-2706-470F-A3E1-BE4A4904AEF5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{510D1CCD-2706-470F-A3E1-BE4A4904AEF5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{510D1CCD-2706-470F-A3E1-BE4A4904AEF5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F4172929-6EBF-4F56-B617-D874D4122661}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F4172929-6EBF-4F56-B617-D874D4122661}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F4172929-6EBF-4F56-B617-D874D4122661}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F4172929-6EBF-4F56-B617-D874D4122661}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{510D1CCD-2706-470F-A3E1-BE4A4904AEF5} = {B2645214-4E1E-438C-A709-8A36ECB05343}
+		{F4172929-6EBF-4F56-B617-D874D4122661} = {C786205E-E342-45FE-BD94-E90EC19C6E2E}
+	EndGlobalSection
+EndGlobal
