@@ -44,8 +44,11 @@
 
 Программа требует прав администратора (большинство пунктов меню хранится в `HKLM`).
 
-Готовый `ContextMenuCustomizer.exe` (один файл, .NET встроен) собирается GitHub Actions — скачайте артефакт
-`ContextMenuCustomizer-win-x64` у последнего успешного запуска workflow **build**.
+Скачайте `ContextMenuCustomizer.exe` (один файл, .NET встроен) со страницы
+[Releases](https://github.com/xxmuxaxx/context-menu-customizer/releases/latest).
+
+Новый релиз выпускается так: Actions → **build** → *Run workflow* → указать версию (например, `1.0.1`),
+либо запушить тег `v1.0.1`. Workflow соберёт exe, создаст тег и GitHub Release с файлом.
 
 ## Сборка из исходников
 
