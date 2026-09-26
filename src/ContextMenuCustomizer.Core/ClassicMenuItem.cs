@@ -20,6 +20,9 @@ public sealed class ClassicMenuItem
     public required string KeyPath { get; init; }
 
     public string DisplayName { get; init; } = "";
+
+    /// <summary>Текст пункта не задан (ни MUIVerb, ни значение по умолчанию) — Проводник показывает имя раздела.</summary>
+    public bool TextFromKeyName { get; init; }
     public string? Command { get; init; }
     public string? DelegateExecute { get; init; }
     public string? Icon { get; init; }

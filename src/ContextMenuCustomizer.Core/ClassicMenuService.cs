@@ -76,7 +76,8 @@ public sealed class ClassicMenuService(RegistryBackup backup, ShellExtensionBloc
     {
         var text = RegistryUtil.GetString(key, "MUIVerb");
         if (string.IsNullOrWhiteSpace(text)) text = RegistryUtil.GetString(key, "");
-        text = string.IsNullOrWhiteSpace(text) ? keyName : MenuText.StripAccelerators(Native.ResolveIndirectString(text));
+        var textFromKeyName = string.IsNullOrWhiteSpace(text);
+        text = textFromKeyName ? keyName : MenuText.StripAccelerators(Native.ResolveIndirectString(text!));
 
         string? command = null, delegateExecute = null;
         using (var commandKey = key.OpenSubKey("command"))
@@ -116,6 +117,7 @@ public sealed class ClassicMenuService(RegistryBackup backup, ShellExtensionBloc
             KeyName = keyName,
             KeyPath = keyPath,
             DisplayName = text,
+            TextFromKeyName = textFromKeyName,
             Command = command,
             DelegateExecute = delegateExecute,
             Icon = RegistryUtil.GetString(key, "Icon"),
@@ -201,6 +203,89 @@ public sealed class ClassicMenuService(RegistryBackup backup, ShellExtensionBloc
         }
 
         Native.NotifyAssociationsChanged();
+    }
+
+    /// <summary>Действие по умолчанию, заданное значением по умолчанию раздела shell (в любом из кустов).</summary>
+    public string? GetShellDefaultVerb(string shellPath)
+    {
+        foreach (var hive in Hives)
+        {
+            using var key = RegistryUtil.OpenClasses(hive, shellPath);
+            var value = key == null ? null : RegistryUtil.GetString(key, "");
+            if (!string.IsNullOrWhiteSpace(value)) return value;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Задаёт порядок пунктов одной группы, переименовывая их разделы (префиксы 010_, 020_, …).
+    /// Возвращает соответствие «старый путь → новый путь».
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Reorder(string shellPath, IReadOnlyList<ClassicMenuItem> ordered)
+    {
+        var shellDefault = GetShellDefaultVerb(shellPath);
+        var blocked = ordered.Select(i => MenuOrder.WhyNotReorderable(i, shellDefault)).FirstOrDefault(r => r != null);
+        if (blocked != null) throw new InvalidOperationException(blocked);
+
+        var renames = MenuOrder.PlanRenames(ordered);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (renames.Count == 0) return result;
+
+        foreach (var hive in renames.Select(r => r.Item.Hive).Distinct())
+            backup.Export(RegistryUtil.FullClassesPath(hive, shellPath), "reorder");
+
+        // Текст, который Проводник брал из имени раздела, сохраняем в MUIVerb, иначе в меню появится префикс.
+        foreach (var (item, _) in renames.Where(r => r.Item.TextFromKeyName))
+        {
+            using var key = RegistryUtil.OpenClasses(item.Hive, item.KeyPath, writable: true)
+                ?? throw new InvalidOperationException($"Раздел не найден: {item.FullRegistryPath}");
+            key.SetValue("MUIVerb", item.KeyName, RegistryValueKind.String);
+        }
+
+        // Два прохода через временные имена, чтобы новые имена не столкнулись со старыми.
+        // При ошибке уже переименованные разделы возвращаются к исходным именам.
+        var pending = new List<(ClassicMenuItem Item, string TempName, string NewName)>();
+        try
+        {
+            foreach (var (item, newName) in renames)
+            {
+                var tempName = $"~cmc_{Guid.NewGuid():N}";
+                RenameKey(item.Hive, shellPath, item.KeyName, tempName);
+                pending.Add((item, tempName, newName));
+            }
+            while (pending.Count > 0)
+            {
+                var (item, tempName, newName) = pending[0];
+                RenameKey(item.Hive, shellPath, tempName, newName);
+                pending.RemoveAt(0);
+                result[item.KeyPath] = shellPath + "\\" + newName;
+            }
+        }
+        catch
+        {
+            foreach (var (item, tempName, _) in pending)
+            {
+                try { RenameKey(item.Hive, shellPath, tempName, item.KeyName); }
+                catch (Exception) { /* Резервная копия уже сохранена. */ }
+            }
+            Native.NotifyAssociationsChanged();
+            throw;
+        }
+
+        Native.NotifyAssociationsChanged();
+        return result;
+    }
+
+    private static void RenameKey(MenuHive hive, string parentPath, string oldName, string newName)
+    {
+        using var parent = RegistryUtil.OpenClasses(hive, parentPath, writable: true)
+            ?? throw new InvalidOperationException($"Раздел не найден: {RegistryUtil.FullClassesPath(hive, parentPath)}");
+        if (parent.OpenSubKey(newName) is { } existing)
+        {
+            existing.Dispose();
+            throw new InvalidOperationException($"Раздел «{newName}» уже существует в {RegistryUtil.FullClassesPath(hive, parentPath)}.");
+        }
+        Native.RenameRegistryKey(parent, oldName, newName);
     }
 
     /// <summary>Удаляет пункт (раздел целиком). Перед удалением делается резервная копия.</summary>

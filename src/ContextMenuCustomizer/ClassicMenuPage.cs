@@ -25,6 +25,7 @@ internal sealed class ClassicMenuPage : UserControl
     private readonly CheckBox _showHandlers = new() { Text = "Показывать обработчики (shellex)", AutoSize = true, Checked = true };
     private readonly Stack<Level> _levels = new();
     private bool _loading;
+    private bool _reorderConfirmed;
 
     public ClassicMenuPage(ClassicMenuService service, Action<string> status)
     {
@@ -51,7 +52,12 @@ internal sealed class ClassicMenuPage : UserControl
         _list.DoubleClick += (_, _) => OpenOrEdit();
         _list.KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.Delete) DeleteSelected();
+            if (e.Alt && e.KeyCode is Keys.Up or Keys.Down)
+            {
+                Move(e.KeyCode == Keys.Up ? -1 : 1);
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Delete) DeleteSelected();
             else if (e.KeyCode == Keys.Enter) OpenOrEdit();
             else if (e.KeyCode == Keys.Back) GoBack();
         };
@@ -68,6 +74,8 @@ internal sealed class ClassicMenuPage : UserControl
         buttons.Controls.Add(Ui.Button("Добавить команду…", (_, _) => Create(submenu: false)));
         buttons.Controls.Add(Ui.Button("Добавить подменю…", (_, _) => Create(submenu: true)));
         buttons.Controls.Add(Ui.Button("Изменить…", (_, _) => EditSelected()));
+        buttons.Controls.Add(Ui.Button("▲ Выше", (_, _) => Move(-1)));
+        buttons.Controls.Add(Ui.Button("▼ Ниже", (_, _) => Move(1)));
         buttons.Controls.Add(Ui.Button("Удалить", (_, _) => DeleteSelected()));
         buttons.Controls.Add(Ui.Button("Обновить", (_, _) => Reload()));
         buttons.Controls.Add(_showHandlers);
@@ -77,7 +85,8 @@ internal sealed class ClassicMenuPage : UserControl
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             Text = "Флажок — пункт виден в меню. Снятый флажок скрывает пункт без удаления (LegacyDisable для команд, «---» перед CLSID для обработчиков). " +
-                   "Двойной щелчок по подменю открывает его содержимое.",
+                   "Двойной щелчок по подменю открывает его содержимое. Список показан в том порядке, в каком пункты стоят в меню; " +
+                   "«▲ Выше» / «▼ Ниже» (Alt+↑/↓) меняют порядок.",
             MaximumSize = new Size(900, 0),
             Padding = new Padding(0, 4, 0, 0),
         };
@@ -134,7 +143,7 @@ internal sealed class ClassicMenuPage : UserControl
         }
     }
 
-    private void Reload()
+    private void Reload(string? selectKeyPath = null)
     {
         var level = Current;
         if (level == null) return;
@@ -159,11 +168,16 @@ internal sealed class ClassicMenuPage : UserControl
         try
         {
             _list.Items.Clear();
-            foreach (var item in items
-                         .OrderBy(i => i.Kind == ClassicItemKind.Handler)
-                         .ThenBy(i => i.DisplayName, StringComparer.CurrentCultureIgnoreCase))
+            foreach (var item in MenuOrder.Sort(items))
             {
-                _list.Items.Add(CreateRow(item));
+                var row = CreateRow(item);
+                _list.Items.Add(row);
+                if (selectKeyPath != null && item.KeyPath.Equals(selectKeyPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    row.Selected = true;
+                    row.Focused = true;
+                    row.EnsureVisible();
+                }
             }
         }
         finally
@@ -219,6 +233,64 @@ internal sealed class ClassicMenuPage : UserControl
             e.Item.Checked = !e.Item.Checked;
             _loading = false;
             Ui.ShowError(FindForm(), ex);
+        }
+    }
+
+    private void Move(int direction)
+    {
+        var item = Selected;
+        var level = Current;
+        if (item == null || level == null) return;
+
+        var shellDefault = _service.GetShellDefaultVerb(level.ShellPath);
+        var reason = MenuOrder.WhyNotReorderable(item, shellDefault);
+        if (reason != null)
+        {
+            MessageBox.Show(FindForm(), reason, "Перемещение недоступно", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // Переставлять можно только внутри группы (вверху / обычные / внизу) и только «переименовываемые» пункты.
+        var group = MenuOrder.PositionGroup(item.Position);
+        var siblings = _list.Items.Cast<ListViewItem>()
+            .Select(r => (ClassicMenuItem)r.Tag!)
+            .Where(i => i.Kind != ClassicItemKind.Handler && MenuOrder.PositionGroup(i.Position) == group)
+            .Where(i => MenuOrder.WhyNotReorderable(i, shellDefault) == null)
+            .ToList();
+        var index = siblings.FindIndex(i => i.KeyPath == item.KeyPath && i.Hive == item.Hive);
+        var target = index + direction;
+        if (index < 0 || target < 0 || target >= siblings.Count)
+        {
+            _status(direction < 0
+                ? "Пункт уже первый в своей группе. Чтобы поднять его выше всех, задайте положение «Вверху меню»."
+                : "Пункт уже последний в своей группе. Чтобы опустить его ниже всех, задайте положение «Внизу меню».");
+            return;
+        }
+
+        if (!_reorderConfirmed)
+        {
+            var answer = MessageBox.Show(FindForm(),
+                "Проводник упорядочивает пункты по имени раздела реестра, поэтому для перестановки разделы будут переименованы " +
+                "(к имени добавится номер: 010_, 020_, …). Текст пунктов в меню не изменится.\n\n" +
+                "Учтите: деинсталлятор программы может не найти переименованный пункт — тогда удалите его здесь вручную. " +
+                "Перед переименованием создаётся резервная копия.\n\nПродолжить?",
+                "Изменение порядка", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes) return;
+            _reorderConfirmed = true;
+        }
+
+        (siblings[index], siblings[target]) = (siblings[target], siblings[index]);
+        try
+        {
+            var renamed = _service.Reorder(level.ShellPath, siblings);
+            var newPath = renamed.TryGetValue(item.KeyPath, out var path) ? path : item.KeyPath;
+            _status($"«{item.DisplayName}» перемещён {(direction < 0 ? "выше" : "ниже")}. Если меню не обновилось — перезапустите Проводник.");
+            Reload(newPath);
+        }
+        catch (Exception e)
+        {
+            Ui.ShowError(FindForm(), e);
+            Reload(item.KeyPath);
         }
     }
 
