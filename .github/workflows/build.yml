@@ -2,9 +2,14 @@ name: build
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия релиза, например 1.0.0 (создаст тег v1.0.0 и GitHub Release)"
+        required: true
 
 jobs:
   build:
@@ -16,6 +21,18 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Determine version
+        id: version
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $version = $env:INPUT_VERSION
+          if (-not $version -and $env:GITHUB_REF_TYPE -eq "tag") { $version = $env:GITHUB_REF_NAME }
+          $version = $version.TrimStart("v")
+          if (-not $version) { $version = "1.0.0" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Test
         run: dotnet test tests/ContextMenuCustomizer.Tests -c Release
 
@@ -23,9 +40,36 @@ jobs:
         run: >
           dotnet publish src/ContextMenuCustomizer -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true -o publish
+          -p:EnableCompressionInSingleFile=true -p:Version=${{ steps.version.outputs.version }}
+          -o publish
 
       - uses: actions/upload-artifact@v4
         with:
           name: ContextMenuCustomizer-win-x64
           path: publish/ContextMenuCustomizer.exe
+
+  release:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ContextMenuCustomizer-win-x64
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Context Menu Customizer ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+          generate_release_notes: true
+          files: ContextMenuCustomizer.exe
+          body: |
+            Настройка контекстного меню Проводника для Windows 10 и 11 (классическое и новое меню Windows 11).
+
+            **Установка:** скачайте `ContextMenuCustomizer.exe` и запустите (нужны права администратора). .NET устанавливать не нужно.
+
+            Резервные копии изменённых разделов реестра сохраняются в `%LOCALAPPDATA%\ContextMenuCustomizer\Backups`.
