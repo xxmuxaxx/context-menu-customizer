@@ -8,6 +8,9 @@ internal static partial class Native
     [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
     private static extern int SHLoadIndirectString(string pszSource, StringBuilder pszOutBuf, int cchOutBuf, IntPtr ppvReserved);
 
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+    private static extern int RegRenameKey(Microsoft.Win32.SafeHandles.SafeRegistryHandle hKey, string lpSubKeyName, string lpNewKeyName);
+
     [DllImport("shell32.dll")]
     private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 
@@ -42,5 +45,13 @@ internal static partial class Native
         {
             // Не критично: изменения подхватятся после перезапуска Проводника.
         }
+    }
+
+    /// <summary>Переименовывает подраздел, сохраняя его содержимое и права доступа.</summary>
+    public static void RenameRegistryKey(Microsoft.Win32.RegistryKey parent, string oldName, string newName)
+    {
+        var error = RegRenameKey(parent.Handle, oldName, newName);
+        if (error == 5) throw new UnauthorizedAccessException($"Нет прав на переименование раздела «{oldName}».");
+        if (error != 0) throw new System.ComponentModel.Win32Exception(error, $"Не удалось переименовать раздел «{oldName}» в «{newName}».");
     }
 }

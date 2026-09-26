@@ -20,6 +20,16 @@ internal sealed class ModernMenuPage : UserControl
     };
     private bool _loading;
 
+    /// <summary>Вид меню изменён на этой вкладке (true — классическое).</summary>
+    public event Action<bool>? StyleChanged;
+
+    /// <summary>Отражает текущий вид меню в переключателях вкладки.</summary>
+    public void ShowStyle(bool classic)
+    {
+        _classic.Checked = classic;
+        _modern.Checked = !classic;
+    }
+
     public ModernMenuPage(ModernMenuService service, Action<string> status)
     {
         _service = service;
@@ -94,9 +104,7 @@ internal sealed class ModernMenuPage : UserControl
         try
         {
             Cursor.Current = Cursors.WaitCursor;
-            var classic = _service.IsClassicMenuForced;
-            _classic.Checked = classic;
-            _modern.Checked = !classic;
+            ShowStyle(_service.IsClassicMenuForced);
 
             var items = _service.GetItems();
             _loading = true;
@@ -150,6 +158,7 @@ internal sealed class ModernMenuPage : UserControl
         {
             _service.SetClassicMenuForced(_classic.Checked);
             _status(_classic.Checked ? "Включено классическое меню." : "Включено новое меню Windows 11.");
+            StyleChanged?.Invoke(_classic.Checked);
             MainForm.RestartExplorer(FindForm()!, _status);
         }
         catch (Exception e)
